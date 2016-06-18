@@ -1,0 +1,91 @@
+#!/usr/bin/env ruby
+# The program reads the wiki page for the Mobile Country Code list (MCC)
+# parses it and returns a csv with the following values:
+# Country,MCC,MNC,Brand,Operator,Status
+#
+# Author:: Marcelo Gornstein (mailto:marcelog@gmail.com)
+# Copyright:: Copyright (c) 2016- Marcelo Gornstein
+# License:: Apache License 2.0
+
+require 'net/http'
+require 'cgi'
+
+# Returns the next block of text where a country information "lives".
+def next_block(text, offset)
+  (block, end_offset) = find_between text, offset, '<h4><span class=', '</table>'
+  return [nil, nil] if block.nil?
+  [block, end_offset]
+end
+
+def next_imsi_row(text, offset)
+  (block, end_offset) = find_between text, offset, '<tr>', '</tr>'
+  return [nil, nil] if block.nil?
+  [block, end_offset]
+end
+
+def country_name(text)
+  /title="[^"]*">(?<name>[^<]*)</ =~ text
+  name
+end
+
+# Finds and returns the text found in between start_string and
+# end_string in the given string, indexed by offset.
+# Returns the text and the offset where it ends so it can be called
+# again to search from that point.
+def find_between(text, offset, start_string, end_string)
+  start_offset = text.index start_string, offset
+  return [nil, nil] if start_offset.nil?
+  start_offset = start_offset + start_string.length
+  end_offset = text.index end_string, start_offset
+  length = end_offset - start_offset
+  [text.slice(start_offset, length), end_offset]
+end
+
+# Main entry point
+uri = URI('https://en.wikipedia.org/wiki/Mobile_country_code')
+res = Net::HTTP.get_response uri
+if res.is_a?(Net::HTTPSuccess)
+  offset = 0
+  previous_offset = nil
+  text = res.body
+  puts "Country,MCC,MNC,Brand,Operator,Status"
+  loop do
+    (block, offset) = next_block text, offset
+    break if block.nil?
+    country = country_name block
+    (headers, mccmnc_offset) = next_imsi_row block, 0
+
+    # Do we have a country without information before the MCC+MNC info?
+    # (e.g: Ascension Island)
+    next_country = block.index '<h4><span class='
+
+    unless next_country.nil?
+      offset = previous_offset + next_country - 1
+      next
+    end
+    next if headers.nil?
+    loop do
+      (row, mccmnc_offset) = next_imsi_row block, mccmnc_offset
+      break if row.nil?
+      (mcc, row_offset) = find_between row, 0, '<td>', '</td>'
+      (mnc, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      (brand, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      (operator, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      (status, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      list = [country, mcc, mnc, brand, operator, status].map do |x|
+        ret = />(?<operator>[^<]*)</ =~ x
+        ret = if ret.nil?
+          "\"#{x}\""
+        else
+          "\"#{operator}\""
+        end
+        CGI.unescapeHTML ret
+      end
+      previous_offset = offset
+      puts list.join ','
+    end
+  end
+  exit 0
+else
+  exit 254
+end
