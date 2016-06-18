@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # The program reads the wiki page for the Mobile Country Code list (MCC)
 # parses it and returns a csv with the following values:
-# Country,MCC,MNC,Brand,Operator,Status
+# Country,CountryISO,MCC,MNC,Brand,Operator,Status
 #
 # Author:: Marcelo Gornstein (mailto:marcelog@gmail.com)
 # Copyright:: Copyright (c) 2016- Marcelo Gornstein
@@ -21,6 +21,11 @@ def next_imsi_row(text, offset)
   (block, end_offset) = find_between text, offset, '<tr>', '</tr>'
   return [nil, nil] if block.nil?
   [block, end_offset]
+end
+
+def country_iso(text)
+  /- (?<iso>[^<]*)<\/span>/ =~ text
+  iso
 end
 
 def country_name(text)
@@ -48,11 +53,12 @@ if res.is_a?(Net::HTTPSuccess)
   offset = 0
   previous_offset = nil
   text = res.body
-  puts "Country,MCC,MNC,Brand,Operator,Status"
+  puts "Country,CountryISO,MCC,MNC,Brand,Operator,Status"
   loop do
     (block, offset) = next_block text, offset
     break if block.nil?
     country = country_name block
+    iso = country_iso block
     (headers, mccmnc_offset) = next_imsi_row block, 0
 
     # Do we have a country without information before the MCC+MNC info?
@@ -72,7 +78,7 @@ if res.is_a?(Net::HTTPSuccess)
       (brand, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (operator, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (status, row_offset) = find_between row, row_offset, '<td>', '</td>'
-      list = [country, mcc, mnc, brand, operator, status].map do |x|
+      list = [country, iso, mcc, mnc, brand, operator, status].map do |x|
         ret = />(?<operator>[^<]*)</ =~ x
         ret = if ret.nil?
           "\"#{x}\""

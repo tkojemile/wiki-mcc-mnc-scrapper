@@ -5,7 +5,7 @@ world from the wiki page entry https://en.wikipedia.org/wiki/Mobile_country_code
 and output a CSV file with the given format:
 
 ```
-Country,MCC,MNC,Brand,Operator,Status
+Country,CountryISO,MCC,MNC,Brand,Operator,Status
 ```
 
 So you can later work with this information.
