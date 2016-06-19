@@ -74,9 +74,13 @@ if res.is_a?(Net::HTTPSuccess)
       (row, mccmnc_offset) = next_imsi_row block, mccmnc_offset
       break if row.nil?
       (mcc, row_offset) = find_between row, 0, '<td>', '</td>'
+      mcc.gsub!(/\s+/, '')
       break if mcc.empty?
+
       (mnc, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      mnc.gsub!(/\s+/, '')
       break if mnc.empty?
+      break if mnc =~ /\?/
       (brand, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (operator, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (status, row_offset) = find_between row, row_offset, '<td>', '</td>'
