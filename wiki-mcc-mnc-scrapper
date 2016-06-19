@@ -84,17 +84,25 @@ if res.is_a?(Net::HTTPSuccess)
       (brand, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (operator, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (status, row_offset) = find_between row, row_offset, '<td>', '</td>'
-      list = [country, iso, mcc, mnc, brand, operator, status].map do |x|
-        ret = />(?<operator>[^<]*)</ =~ x
-        ret = if ret.nil?
-          "\"#{x}\""
-        else
-          "\"#{operator}\""
+      mncs = if mnc =~ /-/ then
+        (mnc_from, mnc_to) = mnc.split '-'
+        (mnc_from..mnc_to)
+      else
+        [mnc]
+      end
+      mncs.each do |mnc|
+        list = [country, iso, mcc, mnc, brand, operator, status].map do |x|
+          ret = />(?<html>[^<]*)</ =~ x
+          ret = if ret.nil?
+            "\"#{x}\""
+          else
+            "\"#{html}\""
+          end
+          CGI.unescapeHTML ret
         end
-        CGI.unescapeHTML ret
+        puts list.join ','
       end
       previous_offset = offset
-      puts list.join ','
     end
   end
   exit 0
