@@ -23,6 +23,9 @@ OptionParser.new do |opts|
   opts.on("-m", "--mccmnc", "write a json formatted file keyed on mccmnc called mccmnc.json") do |v|
     options[:mccmnc] = true
   end
+  opts.on("-e", "--extended", "add Bands (MHz) and References/notes to data") do |v|
+    options[:extended] = true
+  end
   opts.on_tail("-h", "--help", "Show this message") do
     puts opts
     exit
@@ -88,10 +91,17 @@ if res.is_a?(Net::HTTPSuccess)
   offset = 0
   previous_offset = nil
   text = res.body
-  if standard_out_only
-    puts "Country,CountryISO,MCC,MNC,Brand,Operator,Status"
+  if OPTIONS[:extended]
+    columns = "Country,CountryISO,MCC,MNC,Brand,Operator,Status,Bands (MHz),References and notes"
   else
-    rows = ["Country,CountryISO,MCC,MNC,Brand,Operator,Status"]
+    columns = "Country,CountryISO,MCC,MNC,Brand,Operator,Status"
+  end
+
+
+  if standard_out_only
+    puts columns
+  else
+    rows = [columns]
   end
   loop do
     (block, offset) = next_block text, offset
@@ -123,6 +133,10 @@ if res.is_a?(Net::HTTPSuccess)
       (brand, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (operator, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (status, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      if OPTIONS[:extended]
+        (bands, row_offset) = find_between row, row_offset, '<td>', '</td>'
+        (references, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      end
       mncs = if mnc =~ /-/ then
         (mnc_from, mnc_to) = mnc.split '-'
         (mnc_from..mnc_to)
@@ -130,7 +144,12 @@ if res.is_a?(Net::HTTPSuccess)
         [mnc]
       end
       mncs.each do |mnc|
-        list = [country, iso, mcc, mnc, brand, operator, status].map do |x|
+        if OPTIONS[:extended]
+          parse_columns = [country, iso, mcc, mnc, brand, operator, status, bands, references]
+        else
+          parse_columns = [country, iso, mcc, mnc, brand, operator, status]
+        end
+        list = parse_columns.map do |x|
           ret = />(?<html>[^<]*)</ =~ x
           ret = if ret.nil?
             "\"#{x}\""
