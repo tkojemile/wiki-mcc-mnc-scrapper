@@ -158,8 +158,9 @@ if res.is_a?(Net::HTTPSuccess)
           end
           CGI.unescapeHTML ret
         end
-        puts list.join ',' if standard_out_only
-        rows << list.join(',').force_encoding('UTF-8') unless standard_out_only
+        clean_joined_list = list.join(',').force_encoding('UTF-8').gsub('"','')
+        puts clean_joined_list if standard_out_only
+        rows << clean_joined_list unless standard_out_only
       end
       previous_offset = offset
     end
