@@ -9,6 +9,41 @@
 
 require 'net/http'
 require 'cgi'
+require 'optparse'
+
+options = {}
+
+OptionParser.new do |opts|
+  opts.on("-c", "--csv", "write a csv formatted file called mccmnc.csv") do |v|
+    options[:csv] = true
+  end
+  opts.on("-j", "--json", "write a json formatted file called mccmnc.json") do |v|
+    options[:json] = true
+  end
+  opts.on("-m", "--mccmnc", "write a json formatted file keyed on mccmnc called mccmnc.json") do |v|
+    options[:mccmnc] = true
+  end
+  opts.on_tail("-h", "--help", "Show this message") do
+    puts opts
+    exit
+  end
+end.parse!
+OPTIONS = options.freeze
+
+if OPTIONS[:mccmnc] && OPTIONS[:json]
+  puts "Please only select one json output type at a time"
+  exit 1
+end
+
+if OPTIONS[:mccmnc] || OPTIONS[:json]
+  require 'csv'
+  require 'json'
+elsif OPTIONS[:csv]
+  require 'csv'
+else
+  standard_out_only = true
+end
+
 
 # Returns the next block of text where a country information "lives".
 def next_block(text, offset)
@@ -53,7 +88,11 @@ if res.is_a?(Net::HTTPSuccess)
   offset = 0
   previous_offset = nil
   text = res.body
-  puts "Country,CountryISO,MCC,MNC,Brand,Operator,Status"
+  if standard_out_only
+    puts "Country,CountryISO,MCC,MNC,Brand,Operator,Status"
+  else
+    rows = ["Country,CountryISO,MCC,MNC,Brand,Operator,Status"]
+  end
   loop do
     (block, offset) = next_block text, offset
     break if block.nil?
@@ -100,11 +139,29 @@ if res.is_a?(Net::HTTPSuccess)
           end
           CGI.unescapeHTML ret
         end
-        puts list.join ','
+        puts list.join ',' if standard_out_only
+        rows << list.join(',').force_encoding('UTF-8') unless standard_out_only
       end
       previous_offset = offset
     end
     break if country.eql? "Zimbabwe"
+  end
+  unless standard_out_only
+    csv_body = rows.join("\n")
+    c = CSV.new(csv_body,headers: true)
+    File.write("mccmnc.csv",csv_body) if OPTIONS[:csv]
+  end
+  if OPTIONS[:json]
+    j = JSON.generate(c.to_a.map(&:to_hash))
+    File.write("mccmnc.json",j)
+  end
+  if OPTIONS[:mccmnc]
+    jm = c.to_a.map(&:to_hash).each_with_object({}) do |row,acc|
+      mccmnc = row["MCC"]+row["MNC"]
+      acc[mccmnc] ||= []
+      acc[mccmnc] << row
+    end
+    File.write("mccmnc.json",JSON.generate(jm))
   end
   exit 0
 else
