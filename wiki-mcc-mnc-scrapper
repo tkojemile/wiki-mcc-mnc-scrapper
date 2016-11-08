@@ -9,6 +9,44 @@
 
 require 'net/http'
 require 'cgi'
+require 'optparse'
+
+options = {}
+
+OptionParser.new do |opts|
+  opts.on("-c", "--csv", "write a csv formatted file called mccmnc.csv") do |v|
+    options[:csv] = true
+  end
+  opts.on("-j", "--json", "write a json formatted file called mccmnc.json") do |v|
+    options[:json] = true
+  end
+  opts.on("-m", "--mccmnc", "write a json formatted file keyed on mccmnc called mccmnc.json") do |v|
+    options[:mccmnc] = true
+  end
+  opts.on("-e", "--extended", "add Bands (MHz) and References/notes to data") do |v|
+    options[:extended] = true
+  end
+  opts.on_tail("-h", "--help", "Show this message") do
+    puts opts
+    exit
+  end
+end.parse!
+OPTIONS = options.freeze
+
+if OPTIONS[:mccmnc] && OPTIONS[:json]
+  puts "Please only select one json output type at a time"
+  exit 1
+end
+
+if OPTIONS[:mccmnc] || OPTIONS[:json]
+  require 'csv'
+  require 'json'
+elsif OPTIONS[:csv]
+  require 'csv'
+else
+  standard_out_only = true
+end
+
 
 # Returns the next block of text where a country information "lives".
 def next_block(text, offset)
@@ -53,7 +91,18 @@ if res.is_a?(Net::HTTPSuccess)
   offset = 0
   previous_offset = nil
   text = res.body
-  puts "Country,CountryISO,MCC,MNC,Brand,Operator,Status"
+  if OPTIONS[:extended]
+    columns = "Country,CountryISO,MCC,MNC,Brand,Operator,Status,Bands (MHz),References and notes"
+  else
+    columns = "Country,CountryISO,MCC,MNC,Brand,Operator,Status"
+  end
+
+
+  if standard_out_only
+    puts columns
+  else
+    rows = [columns]
+  end
   loop do
     (block, offset) = next_block text, offset
     break if block.nil?
@@ -84,6 +133,10 @@ if res.is_a?(Net::HTTPSuccess)
       (brand, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (operator, row_offset) = find_between row, row_offset, '<td>', '</td>'
       (status, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      if OPTIONS[:extended]
+        (bands, row_offset) = find_between row, row_offset, '<td>', '</td>'
+        (references, row_offset) = find_between row, row_offset, '<td>', '</td>'
+      end
       mncs = if mnc =~ /-/ then
         (mnc_from, mnc_to) = mnc.split '-'
         (mnc_from..mnc_to)
@@ -91,7 +144,12 @@ if res.is_a?(Net::HTTPSuccess)
         [mnc]
       end
       mncs.each do |mnc|
-        list = [country, iso, mcc, mnc, brand, operator, status].map do |x|
+        if OPTIONS[:extended]
+          parse_columns = [country, iso, mcc, mnc, brand, operator, status, bands, references]
+        else
+          parse_columns = [country, iso, mcc, mnc, brand, operator, status]
+        end
+        list = parse_columns.map do |x|
           ret = />(?<html>[^<]*)</ =~ x
           ret = if ret.nil?
             "\"#{x}\""
@@ -100,11 +158,30 @@ if res.is_a?(Net::HTTPSuccess)
           end
           CGI.unescapeHTML ret
         end
-        puts list.join ','
+        clean_joined_list = list.join(',').force_encoding('UTF-8').gsub('"','')
+        puts clean_joined_list if standard_out_only
+        rows << clean_joined_list unless standard_out_only
       end
       previous_offset = offset
     end
     break if country.eql? "Zimbabwe"
+  end
+  unless standard_out_only
+    csv_body = rows.join("\n")
+    c = CSV.new(csv_body,headers: true)
+    File.write("mccmnc.csv",csv_body) if OPTIONS[:csv]
+  end
+  if OPTIONS[:json]
+    j = JSON.generate(c.to_a.map(&:to_hash))
+    File.write("mccmnc.json",j)
+  end
+  if OPTIONS[:mccmnc]
+    jm = c.to_a.map(&:to_hash).each_with_object({}) do |row,acc|
+      mccmnc = row["MCC"]+row["MNC"]
+      acc[mccmnc] ||= []
+      acc[mccmnc] << row
+    end
+    File.write("mccmnc.json",JSON.generate(jm))
   end
   exit 0
 else
