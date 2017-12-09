@@ -113,6 +113,7 @@ if res.is_a?(Net::HTTPSuccess)
     # Do we have a country without information before the MCC+MNC info?
     # (e.g: Ascension Island)
     next_country = block.index '<h3><span class='
+    previous_offset = offset
 
     unless next_country.nil?
       offset = previous_offset + next_country - 1
@@ -162,7 +163,6 @@ if res.is_a?(Net::HTTPSuccess)
         puts clean_joined_list if standard_out_only
         rows << clean_joined_list unless standard_out_only
       end
-      previous_offset = offset
     end
     break if country.eql? "Zimbabwe"
   end
