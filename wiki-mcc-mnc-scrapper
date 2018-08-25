@@ -50,7 +50,7 @@ end
 
 # Returns the next block of text where a country information "lives".
 def next_block(text, offset)
-  (block, end_offset) = find_between text, offset, '<h3><span class=', '</table>'
+  (block, end_offset) = find_between text, offset, '<h4><span class=', '</table>'
   return [nil, nil] if block.nil?
   [block, end_offset]
 end
